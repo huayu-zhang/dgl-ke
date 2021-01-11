@@ -1,64 +1,88 @@
 Introduction to Knowledge Graph Embedding
 =========================================
 
-Knowledge Graphs (KG) have emerged as a compelling way to integrate
-siloed data sources and model relationships embedded in key entities of
-interest for applications such as search and product recommendations.
-Insights extracted from KGs in the form of knowledge graph embeddings
-(KGE) are now used to enhance machine learning and uncover patterns such
-as the nearest neighbors in social networks. Existing approaches to
-extract these embeddings are however hard to use and rarely scale to
-graphs with millions of nodes. AWS recently launched DGL-KE, that
-simplifies this process by abstracting this task to one command line
-script. This toolkit is built with Deep Graph Library (DGL), an open
-source library to implement graph neural networks (GNN). DGL-KE scales
-to graphs with millions of nodes and billions of edges, and offers a
-speedup of 2-5x over competing approaches.
+Knowledge Graphs (KGs) have emerged as an effective way to integrate
+disparate data sources and model underlying relationships for applications
+such as search. At Amazon, we use KGs to represent the hierarchical
+relationships among products; the relationships between creators and content
+on Amazon Music and Prime Video; and information for Alexa's question-answering
+service. Information extracted from KGs in the form of embeddings is used to
+improve search, recommend products, and infer missing information.
 
-DGL-KE is a powerful that very effective at generating graph embeddings.
-To use this tool effectively, however, it is important to understand the
-underlying architecture and where it performs best. This blog details
-out the underlying models used to generate embeddings that are
-fundamental to understand DGL-KE's functional capabilities.
+What is a graph
+---------------
+A graph is a structure used to represent things and their relations.
+It is made of two sets - the set of nodes (also called vertices) and
+the set of edges (also called arcs). Each edge itself connects a pair
+of nodes indicating that there is a relation between them. This relation
+can either be undirected, e.g., capturing symmetric relations between nodes,
+or directed, capturing asymmetric relations. For example, if a graph is used
+to model the friendship relations of people in a social network, then the edges
+will be undirected as they are used to indicate that two people are friends;
+however, if the graph is used to model how people follow each other on Twitter,
+the edges will be directed. Depending on the edges' directionality, a graph can
+be directed or undirected.
+
+Graphs can be either homogeneous or heterogeneous. In a homogeneous graph, all
+the nodes represent instances of the same type and all the edges represent relations
+of the same type. For instance, a social network is a graph consisting of people
+and their connections, all representing the same entity type. In contrast,
+in a heterogeneous graph, the nodes and edges can be of different types. For instance,
+the graph for encoding the information in a marketplace will have buyer, seller,
+and product nodes that are connected via wants-to-buy, has-bought, is-customer-of,
+and is-selling edges.
+
+Finally, another class of graphs that is especially important for knowledge graphs are
+multigraphs. These are graphs that can have multiple (directed) edges between the same
+pair of nodes and can also contain loops. These multiple edges are typically of different
+types and as such most multigraphs are heterogeneous. Note that graphs that do not
+allow these multiple edges and self-loops are called simple graphs.
 
 What is a Knowledge Graph
-=========================
+-------------------------
 
-“A knowledge graph (i) mainly describes real-world entities and their
-interrelations, organized in a graph, (ii) defines possible classes and
-relations of entities in a schema, (iii) allows for potentially
-interrelating arbitrary entities with each other and (iv) covers various
-topical domains.” [Paulheim- 1] Knowledge Graphs are often modeled as
-directed multigraphs. As a quick reminder let us define multi-graph and
-directed graphs: - In a directed graph edges are called arcs and they
-can direct information from their tail to their head nodes but not in
-the opposite direction. - A multigraph is a graph that can include loops
-as well as multiple relationships between the same nodes. for more
-information on Graphs you can check this
-`link <https://github.com/cyrusmvahid/GNNTrainingMaterial/blob/master/March2020/01-gentle_into_2_graphs.ipynb>`__.
+In the earlier marketplace graph example, the labels assigned to the different node types
+(buyer, seller, product) and the different relation types (wants-to-buy, has-bought,
+is-customer-of, is-selling) convey precise information (often called semantics)
+about what the nodes and relations represent for that particular domain. Once this graph
+is populated, it will encode the knowledge that we have about that marketplace as it
+relates to types of nodes and relations included. Such a graph is an example of a knowledge graph.
+
+A knowledge graph (KG) is a directed heterogeneous multigraph whose node and relation
+types have domain-specific semantics. KGs allow us to encode the knowledge into a form
+that is human interpretable and amenable to automated analysis and inference. KGs are
+becoming a popular approach to represent diverse types of information in the form of
+different types of entities connected via different types of relations.
+
+When working with KGs, we adopt a different terminology than the traditional vertices
+and edges used in graphs. The vertices of the knowledge graph are often called entities
+and the directed edges are often called triplets and are represented as a (h, r, t) tuple,
+where h is the head entity, t is the tail entity, and r is the relation associating
+the head with the tail entities. Note that the term relation here refers to the type
+of the relation (e.g., one of wants-to-buy, has-bought, is-customer-of, and is-selling).
 
 Let us examine a directed multigraph in an example, which includes a
 cast of characters and the world in which they live.
 
 **Scenario:**
 
-**Mary** and **Tom** are ***siblings*** and they both are ***are
-vegetarians***, who ***like*** **potatoes** and **cheese**. Mary and Tom
-both ***work*** at **Amazon**. **Joe** is a bloke who is a
-***colleague*** of Tom. To make the matter complicated, Joe ***loves***
+**Mary** and **Tom** are *siblings* and they both are *are
+vegetarians*, who *like* **potatoes** and **cheese**. Mary and Tom
+both *work* at **Amazon**. **Joe** is a bloke who is a
+*colleague* of Tom. To make the matter complicated, Joe *loves*
 Mary, but we do not know if the feeling is reciprocated.
 
-Joe ***is from*** **Quebec** and is proud of his native dish of
-**Poutine**, which is ***composed*** of potato, cheese, and **gravy**.
-We also know that gravy ***contains*** **meat** in some form.
+Joe *is from* **Quebec** and is proud of his native dish of
+**Poutine**, which is *composed* of potato, cheese, and **gravy**.
+We also know that gravy *contains* **meat** in some form.
 
 Joe is excited to invite Tom for dinner and has sneakily included his
 sibling, Mary, in the invitation. His plans are doomed from get go as he
 is planning to serve the vegetarian siblings his favourite Quebecois
 dish, Poutine.
 
-Oh! by the way, a piece of geography trivia: Quebec ***is located*** in
-a **province** of the same name which in turn ***is located*** in
+Oh! by the way, a piece of geography trivia: Quebec *is located* in
+a **province** of the same name which in turn *is located* in
 **Canada**.
 
 There are several relationships in this scenario that are not explicitly
@@ -93,24 +117,12 @@ more information on how to use the examples, please refer to the
 `code <https://github.com/cyrusmvahid/GNNTrainingMaterial/blob/master/March2020/supportingexamples/examples.py>`__
 that draws the examples.
 
-.. raw:: html
-
-   <figure>
-       
-
-.. raw:: html
-
-   <figcaption>
-
-Figure1: World of Mary
-
-.. raw:: html
-
-   </figcaption>
-   </figure>
+.. image:: https://data.dgl.ai/asset/image/ke/kg_example.png
+  :width: 400
+  :alt: kg_example
 
 What is the task of Knowledge Graph Embedding?
-==============================================
+----------------------------------------------
 
 Knowledge graph embedding is the task of completing the knowledge graphs
 by probabilistically inferring the missing arcs from the existing graph
@@ -120,39 +132,41 @@ model and computationally expensive. For this rest of this blog, we
 examine fundamentals of KGE.
 
 Common connectivity patterns:
-=============================
+-----------------------------
 
 Different connectivity or relational pattern are commonly observed in
 KGs. A Knowledge Graph Embedding model intends to predict missing
 connections that are often one of the types below.
 
--  ***symmetric***
--  **Definition:** A relation :math:`r` is ***symmetric*** if
+-  *symmetric*
+-  **Definition:** A relation :math:`r` is *symmetric* if
    :math:`\forall {x,y}: (x,r,y)\implies (y,r,x)`
 -  **Example:**
-   :math:`\text{x=Mary and y=Tom and r="is a sibling of"}; (x,r,y) = \text{Mary is a sibling of Tom} \implies (y,r,x)=\text{Tom is a sibling of Mary}`
+   :math:`\text{x=Mary and y=Tom and r="is a sibling of"}; \\ (x,r,y) = \text{Mary is a sibling of Tom} \implies (y,r,x)=\text{Tom is a sibling of Mary}`
 
--  ***antisymmetric***
--  **Definition:** A relation r is ***antisymmetric*** if
+-  *antisymmetric*
+-  **Definition:** A relation r is *antisymmetric* if
    :math:`\forall {x,y}: (x,r,y)\implies \lnot (y,r,x)`
 -  **Example:**
-   :math:`\text{x=Quebec and y=Canada and r="is located in"}; (x,r,y) = \text{Quebec is located in Canada} \implies (y,\lnot r,x)=\text{Canada is not located in Quebec}`
--  ***inversion***
--  **Definition:** A relation :math:`r_1` is ***inverse*** to relation
+   :math:`\text{x=Quebec and y=Canada and r="is located in"}; \\ (x,r,y) = \text{Quebec is located in Canada} \implies (y,\lnot r,x)=\text{Canada is not located in Quebec}`
+
+-  *inversion*
+-  **Definition:** A relation :math:`r_1` is *inverse* to relation
    :math:`r_2` if :math:`\forall x,y: r_2(x,y)\implies r_1(y,x)`.
 -  **Example:**
    :math:`x=Mary,\ y=Tom,\ r_1=\text{"is a sister of}"\ and r_2=\text{"is a brother of"} \\ (x,r_1,y)=\text{Mary is a sister of Tom} \implies (y,r_2,x) = \text{Tom is a brother of Mary}`
--  ***composition***
+
+-  *composition*
 -  **Definition**: relation :math:`r_1` is composed of relation
    :math:`r_2` and relation :math:`r_3` if
    :math:`\forall x,y,z: (x,r_2,y) \land (y,r_3,z) \implies (x,r_1, z)`
 -  **Example:**
-   :math:`\text{x=Tom, y=Quebec, z=Canada},\ r_2=\text{"is born in"}, r_3=\text{"is located in"}, r_1=\text{"is from"}\\(x,r_2,y)=\text{Tom is born in Quebec} \land (y,r_3,z) = \text{Quebec is located in Canada} \implies (x,r_1,z)=\text{Tom is from Canada}`
+   :math:`\text{x=Tom, y=Quebec, z=Canada},\ r_2=\text{"is born in"}, r_3=\text{"is located in"}, r_1=\text{"is from"}\\(x,r_2,y)=\text{Tom is born in Quebec} \land (y,r_3,z) = \text{Quebec is located in Canada} \\ \implies (x,r_1,z)=\text{Tom is from Canada}`
 
 *ref: RotateE[2]*
 
 Score Function
-==============
+--------------
 
 There are different flavours of KGE that have been developed over the
 course of the past few years. What most of them have in common is a
@@ -162,21 +176,12 @@ the reader to DGL-KE, an open source knowledge graph embedding library,
 we limit the scope only to those methods that are implemented by DGL-KE
 and are listed in Figure 2.
 
-.. raw:: html
-
-   <figure>
-       
-
-.. raw:: html
-
-   <figcaption>
 
 Figure2: A list of score functions for KE papers implemented by DGL-KE
 
-.. raw:: html
-
-   </figcaption>
-   </figure>
+.. image:: https://data.dgl.ai/asset/image/ke/kge_scores.png
+  :width: 400
+  :alt: kge_scores
 
 A short explanation of the score functions
 ------------------------------------------
@@ -218,21 +223,12 @@ respectively. TransE performs linear transformation and the scoring
 function is negative distance between :math:`h+r` and :math:`t`, or
 :math:`f=-\|h+r-t\|_{\frac{1}{2}}`
 
-.. raw:: html
-
-   <figure>
-       
-
-.. raw:: html
-
-   <figcaption>
-
 Figure 3: TransE
 
-.. raw:: html
+.. image:: https://data.dgl.ai/asset/image/ke/transe.png
+  :width: 400
+  :alt: transe
 
-   </figcaption>
-   </figure>
 
 TransR
 ~~~~~~
@@ -264,22 +260,14 @@ measures euclidean distance between :math:`h+r` and :math:`t`, but the
 distance measure is per relationship space. More formally:
 :math:`f_r=\|h_r+r-t_r\|_2^2`
 
-.. raw:: html
-
-   <figure>
-       
-
-.. raw:: html
-
-   <figcaption>
 
 Figure 4: TransR projecting different aspects of an entity to a
 relationship space.
 
-.. raw:: html
+.. image:: https://data.dgl.ai/asset/image/ke/transr.png
+  :width: 400
+  :alt: transr
 
-   </figcaption>
-   </figure>
 
 Another advantage of TransR over TransE is its ability to extract
 compositional rules. Ability to extract rules has two major benefits. It
@@ -340,22 +328,14 @@ Value of :math:`\mathcal{X}_{ijk}` is determined as:
           0\  &\quad\text{if }(e_i, r_k, e_j)\text{ does not hold}
         \end{cases}
 
-.. raw:: html
-
-   <figure>
-       
-
-.. raw:: html
-
-   <figcaption>
 
 Figure 5: RESCAL captures entities and their relations as
 multi-dimensional tensor
 
-.. raw:: html
+.. image:: https://data.dgl.ai/asset/image/ke/rescal.png
+  :width: 400
+  :alt: rescal
 
-   </figcaption>
-   </figure>
 
 As entity relationship tensors tend to be sparse, the authors of RESCAL,
 propose a dyadic decomposition to capture the inherent structure of the
@@ -376,30 +356,33 @@ component in :math:`\mathcal{X}`. To make sense of it all, let's take a
 look at an example:
 
 .. math::
+   :nowrap:
 
+   \begin{gather}
+      Entities=\{\text{Mary :}0, \text{Tom :}1, \text{Joe :}2\} \\
+      Relationships=\{\text{sibling, colleague}\} \\
+      Relation_{k=0}^{sibling}: \text{Mary and Tom are siblings but Joe is not their sibling.} \\
+      Relations_{k=1}^{colleague}: \text{Mary,Tom, and Joe are colleagues}\\
+      \text{relationship matrices will model: }\mathcal{X_k}=
+      \begin{bmatrix}
+      Mary & Tom  & Joe \\
+      Tom  & Joe & Mary \\
+      Joe  & Mary  & Tom
+      \end{bmatrix}\\
+      {\mathcal{X}}_{0:sibling}=
+      \begin{bmatrix}
+      0 & 1 & 0\\
+      0 & 0 & 1\\
+      0 & 0 & 0
+      \end{bmatrix}\\
+      \mathcal{X}_{1:colleague}=
+      \begin{bmatrix}
+      0 & 1 & 1\\
+      1 & 0 & 1\\
+      1 & 1 & 0
+      \end{bmatrix}
+   \end{gather}
 
-   Entities=\{\text{Mary :}0, \text{Tom :}1, \text{Joe :}2\} \\
-   Relationships=\{\text{sibling, colleague}\} \\
-   Relation_{k=0}^{sibling}: \text{Mary and Tom are siblings but Joe is not their sibling.} \\
-   Relations_{k=1}^{colleague}: \text{Mary,Tom, and Joe are colleagues}\\
-   \text{relationship matrices will model: }\mathcal{X_k}=
-   \begin{bmatrix}
-   Mary & Tom  & Joe \\
-   Tom  & Joe & Mary \\
-   Joe  & Mary  & Tom
-   \end{bmatrix}\\
-   {\mathcal{X}}_{0:sibling}=
-   \begin{bmatrix}
-   0 & 1 & 0\\
-   0 & 0 & 1\\
-   0 & 0 & 0
-   \end{bmatrix}\\
-   \mathcal{X}_{1:colleague}=
-   \begin{bmatrix}
-   0 & 1 & 1\\
-   1 & 0 & 1\\
-   1 & 1 & 0
-   \end{bmatrix}
 
 Note that even in such a small knowledge graph where two of the three
 entities have even a symmetrical relationship, matrices
@@ -414,24 +397,17 @@ it contains little information and has very low entropy.
 Next step in RESCAL is decomposing matrices :math:`\mathcal{X}_k` using
 a rank\_k decomposition as illustrated in figure 6.
 
-.. raw:: html
 
-   <figure>
-       
-
-.. raw:: html
-
-   <figcaption>
 
 Figure 6: Each of the :math:`k` slices of martix :math:`\mathcal{X}` is
 factorized to its k-rank components in form of a :math:`n\times r`
 entity-latent component and an asymmetric :math:`r\times r` that
 specifies interactions of entity-latent components per relation.
 
-.. raw:: html
+.. image:: https://data.dgl.ai/asset/image/ke/rescal2.png
+  :width: 400
+  :alt: rescal2
 
-   </figcaption>
-   </figure>
 
 :math:`A` and :math:`R_k` are computed through solving an optimization
 problem that is correlated to minimizing the distance between
@@ -456,21 +432,14 @@ collection of all individual :math:`R_k` matrices and is of dimension
 
 Figure 7 illustrates computation of the the score for RESCAL method.
 
-.. raw:: html
-
-   <figure>
-       
-
-.. raw:: html
-
-   <figcaption>
 
 Figure 7: RESCAL
 
-.. raw:: html
 
-   </figcaption>
-   </figure>
+.. image:: https://data.dgl.ai/asset/image/ke/rescal3.png
+  :width: 400
+  :alt: rescal3
+
 
 Score function :math:`f` requires :math:`O(d^2)` parameters per
 relation.
@@ -491,28 +460,21 @@ where :math:`M_r=diag(r)` is computed as:
 
 .. math::
 
-
    f_r(h,t) = \mathbf{h}^\top diag(r) t = \sum_{i=0}^{d-1}[r]_i.[h]_i.[t]_i
+
 
 Figure 8 illustrates how DistMulti computes the score by capturing the
 pairwise interaction only along the same dimensions of components of h
 and t.
 
-.. raw:: html
-
-   <figure>
-       
-
-.. raw:: html
-
-   <figcaption>
 
 Figure 8: DistMulti
 
-.. raw:: html
 
-   </figcaption>
-   </figure>
+.. image:: https://data.dgl.ai/asset/image/ke/distmult.png
+  :width: 400
+  :alt: distmult
+
 
 A basic refresher on linear algebra
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -533,7 +495,8 @@ A basic refresher on linear algebra
    b_{21} & b_{22} & \dots  & b_{2k} \\
    \vdots & \vdots & \ddots & \dots  \\
    b_{n1} & b_{n2} & \dots  & b_{nk} \\
-   \end{bmatrix}_{n\times k}\ then\
+   \end{bmatrix}_{n\times k}\        \\
+   then\
    C=[c_{mk}]_{m\times k}\ such\ that\  c_{mk}=\sum_{p=1}^{k}a_{mp}b_{pk}\, thus: \\
    C_{m\times k} = \begin{bmatrix}
    a_{11}b_{11} + \dots + a_{1n}b_{n1} & a_{11}b_{12} + \dots + a_{1n}b_{n2} & \dots  & a_{11}b_{1k} + \dots + a_{1n}b_{nk} \\
@@ -701,12 +664,12 @@ Example:
    1 + i \\
    2 + 2i
    \end{bmatrix}
-   \text{ are in } \mathbb{C}^2\text{ and }\mathbb{C}^3\text{ respectively.}
+   \text{ are in } \mathbb{C}^2\text{ and }\mathbb{C}^3\text{ respectively.} \\
    \text{ then }u^*= \begin{bmatrix}
    2 - 3i &
    1 - 5i
    \end{bmatrix}
-   \text{ and }
+   \text{ and } \\
    \langle u,v \rangle = u^*v = \begin{bmatrix}
    2 - 3i &
    1 - 5i
@@ -845,8 +808,8 @@ Computing :math:`i` to a sequence of powers and replacing the values in
 .. math::
 
 
-   i^2=-1,\ i^3=i^2i=-i,\ i^4=ii^3=-1^2=1,\ i^5=i^4i=i,\ i^6=i^5i=i^2=-1,\ i^7=i^6i=-i,\ i^8=i^7i=-i^2=1,\ \dots\\
-   e^{(ix)} = 1 + \frac{ix}{1!} +\frac{i^2x^2}{2!} + \frac{i^3x^3}{3!} + \frac{i^4x^4}{4!} + \frac{i^5x^5}{5!} + \frac{i^6x^6}{6!} + \frac{i^7x^7}{3!} + \frac{i^8x^8}{8!} + \dots\\
+   i^2=-1,\ i^3=i^2i=-i,\ i^4=ii^3=-1^2=1,\ i^5=i^4i=i,\ i^6=i^5i=i^2=-1,\ \dots\\
+   e^{(ix)} = 1 + \frac{ix}{1!} +\frac{i^2x^2}{2!} + \frac{i^3x^3}{3!} + \frac{i^4x^4}{4!} + \frac{i^5x^5}{5!} + \frac{i^6x^6}{6!} + \dots\\
 
 rearranging the series and factoring :math:`i` in terms that include it:
 
@@ -904,21 +867,14 @@ and
 or a rotation is a combination of two smaller rotations sum of whose
 angles is the angle of the third relation.
 
-.. raw:: html
-
-   <figure>
-       
-
-.. raw:: html
-
-   <figcaption>
 
 Figure 9: RotateE vs. TransE
 
-.. raw:: html
 
-   </figcaption>
-   </figure>
+.. image:: https://data.dgl.ai/asset/image/ke/rotate.png
+  :width: 400
+  :alt: rotate
+
 
 Score Function
 ^^^^^^^^^^^^^^
@@ -932,7 +888,7 @@ tail elements and is defined as:
    d_r(h, t)=\|h\circ r-t\|
 
 Training KE
-===========
+-----------
 
 Negative Sampling
 -----------------
@@ -985,15 +941,8 @@ is give by:
 | RotateE     | :math:`h,t \in \mathbb{C}^d`   | :math:`r\in\mathbb{C}^d`                                  | :math:`\|h\circ r-t\|`         | :math:`O(d)`     | :math:`\checkmark`   | :math:`\checkmark`   | :math:`\checkmark`   | :math:`\checkmark`   |
 +-------------+--------------------------------+-----------------------------------------------------------+--------------------------------+------------------+----------------------+----------------------+----------------------+----------------------+
 
-What's Next?
-============
-
-Now that we have investigated the methods that are implemented in
-DGL-KE, we shall explore how DGL-KE optimized computation of these
-methods and distributes them on multiple devices in a new post.
-
 References
-==========
+----------
 
 1. http://semantic-web-journal.net/system/files/swj1167.pdf
 2. Zhiqing Sun, Zhi-Hong Deng, Jian-Yun Nie, and Jian Tang. RotatE:

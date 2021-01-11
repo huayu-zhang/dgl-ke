@@ -34,6 +34,12 @@ def logsigmoid(val):
     z = nd.exp(-max_elem) + nd.exp(-val - max_elem)
     return -(max_elem + nd.log(z))
 
+def abs(val):
+    return nd.abs(val)
+
+def masked_select(input, mask):
+    assert False, 'masked select for MXNet is not implemented'
+
 none = lambda x : x
 get_dev = lambda gpu : mx.gpu(gpu) if gpu >= 0 else mx.cpu()
 get_device = lambda args : mx.gpu(args.gpu[0]) if args.gpu[0] >= 0 else mx.cpu()
@@ -52,14 +58,14 @@ def l2_dist(x, y, pw=False):
         x = x.expand_dims(axis=1)
         y = y.expand_dims(axis=0)
 
-    return nd.norm(x-y, ord=2, axis=-1)
+    return -nd.norm(x-y, ord=2, axis=-1)
 
 def l1_dist(x, y, pw=False):
     if pw is False:
         x = x.expand_dims(axis=1)
         y = y.expand_dims(axis=0)
 
-    return nd.norm(x-y, ord=1, axis=-1)
+    return -nd.norm(x-y, ord=1, axis=-1)
 
 def dot_dist(x, y, pw=False):
     if pw is False:
@@ -70,13 +76,13 @@ def dot_dist(x, y, pw=False):
 
 def cosine_dist(x, y, pw=False):
     score = dot_dist(x, y, pw)
-    
+
     x = nd.norm(x, ord=2, axis=-1)
     y = nd.norm(y, ord=2, axis=-1)
     if pw is False:
         x = x.expand_dims(axis=1)
         y = y.expand_dims(axis=0)
-       
+
     return score / (x * y)
 
 def extended_jaccard_dist(x, y, pw=False):
@@ -89,6 +95,9 @@ def extended_jaccard_dist(x, y, pw=False):
         y = y.expand_dims(axis=0)
 
     return score / (x + y - score)
+
+def floor_divide(input, other):
+    return input / other
 
 class InferEmbedding:
     def __init__(self, device):
@@ -106,6 +115,19 @@ class InferEmbedding:
         """
         file_name = os.path.join(path, name+'.npy')
         self.emb = mx.nd.array(np.load(file_name))
+
+    def load_emb(self, emb_array):
+        """Load embeddings from numpy array.
+
+        Parameters
+        ----------
+        emb_array : numpy.array  or torch.tensor
+            Embedding array in numpy array or torch.tensor
+        """
+        if isinstance(emb_array, np.ndarray):
+            self.emb = mx.nd.array(emb_array)
+        else:
+            self.emb = emb_array
 
     def __call__(self, idx):
         return self.emb[idx]
@@ -176,7 +198,7 @@ class ExternalEmbedding:
 
     def update(self, gpu_id=-1):
         """ Update embeddings in a sparse manner
-        Sparse embeddings are updated in mini batches. we maintains gradient states for 
+        Sparse embeddings are updated in mini batches. we maintains gradient states for
         each embedding so they can be updated separately.
 
         Parameters

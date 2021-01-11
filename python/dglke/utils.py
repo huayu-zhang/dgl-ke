@@ -40,24 +40,13 @@ def save_model(args, model, emap_file=None, rmap_file=None):
 
     # We need to save the model configurations as well.
     conf_file = os.path.join(args.save_path, 'config.json')
+    dict = {}
+    config = args
+    dict.update(vars(config))
+    dict.update({'emp_file': emap_file,
+                  'rmap_file': rmap_file})
     with open(conf_file, 'w') as outfile:
-        json.dump({'dataset': args.dataset,
-                   'model': args.model_name,
-                   'emb_size': args.hidden_dim,
-                   'max_train_step': args.max_step,
-                   'batch_size': args.batch_size,
-                   'neg_sample_size': args.neg_sample_size,
-                   'lr': args.lr,
-                   'gamma': args.gamma,
-                   'double_ent': args.double_ent,
-                   'double_rel': args.double_rel,
-                   'neg_adversarial_sampling': args.neg_adversarial_sampling,
-                   'adversarial_temperature': args.adversarial_temperature,
-                   'regularization_coef': args.regularization_coef,
-                   'regularization_norm': args.regularization_norm,
-                   'emap_file':emap_file,
-                   'rmap_file':rmap_file},
-                   outfile, indent=4)
+        json.dump(dict, outfile, indent=4)
 
 def load_model_config(config_f):
     print(config_f)
@@ -204,8 +193,8 @@ def load_entity_data(file=None):
             entity.append(int(id))
             id = f.readline()
     entity = np.asarray(entity)
-
     return entity
+
 
 class CommonArgParser(argparse.ArgumentParser):
     def __init__(self):
@@ -213,7 +202,8 @@ class CommonArgParser(argparse.ArgumentParser):
 
         self.add_argument('--model_name', default='TransE',
                           choices=['TransE', 'TransE_l1', 'TransE_l2', 'TransR',
-                                   'RESCAL', 'DistMult', 'ComplEx', 'RotatE'],
+                                   'RESCAL', 'DistMult', 'ComplEx', 'RotatE',
+                                   'SimplE'],
                           help='The models provided by DGL-KE.')
         self.add_argument('--data_path', type=str, default='data',
                           help='The path of the directory where DGL-KE loads knowledge graph data.')
@@ -285,9 +275,9 @@ class CommonArgParser(argparse.ArgumentParser):
         self.add_argument('-g', '--gamma', type=float, default=12.0,
                           help='The margin value in the score function. It is used by TransX and RotatE.')
         self.add_argument('-de', '--double_ent', action='store_true',
-                          help='Double entitiy dim for complex number It is used by RotatE.')
+                          help='Double entitiy dim for complex number or canonical polyadic. It is used by RotatE and SimplE.')
         self.add_argument('-dr', '--double_rel', action='store_true',
-                          help='Double relation dim for complex number.')
+                          help='Double relation dim for complex number or canonical polyadic. It is used by RotatE and SimplE')
         self.add_argument('-adv', '--neg_adversarial_sampling', action='store_true',
                           help='Indicate whether to use negative adversarial sampling.'\
                                   'It will weight negative samples with higher scores more.')
@@ -297,3 +287,11 @@ class CommonArgParser(argparse.ArgumentParser):
                           help='The coefficient for regularization.')
         self.add_argument('-rn', '--regularization_norm', type=int, default=3,
                           help='norm used in regularization.')
+        self.add_argument('-pw', '--pairwise', action='store_true',
+                          help='Indicate whether to use pairwise loss function. '
+                               'It compares the scores of a positive triple and a negative triple')
+        self.add_argument('--loss_genre', default='Logsigmoid',
+                          choices=['Hinge', 'Logistic', 'Logsigmoid', 'BCE'],
+                          help='The loss function used to train KGEM.')
+        self.add_argument('-m', '--margin', type=float, default=1.0,
+                          help='hyper-parameter for hinge loss.')

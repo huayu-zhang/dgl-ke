@@ -35,6 +35,7 @@ if backend.lower() == 'mxnet':
     from .mxnet.tensor_models import l1_dist
     from .mxnet.tensor_models import dot_dist
     from .mxnet.tensor_models import extended_jaccard_dist
+    from .mxnet.tensor_models import floor_divide
     DEFAULT_INFER_BATCHSIZE = 256
 else:
     from .pytorch.tensor_models import logsigmoid
@@ -45,23 +46,20 @@ else:
     from .pytorch.tensor_models import l1_dist
     from .pytorch.tensor_models import dot_dist
     from .pytorch.tensor_models import extended_jaccard_dist
+    from .pytorch.tensor_models import floor_divide
     DEFAULT_INFER_BATCHSIZE = 1024
 
 class ScoreInfer(object):
     """ Calculate score of triplet (h, r, t) based on pretained KG embeddings
         using specified score_function
-
     Parameters
     ---------
-    device : int 
+    device : int
         Device to run the inference, -1 for CPU
-
     config : dict
         Containing KG model information
-
     model_path : str
         path storing the model (pretrained embeddings)
-
     score_func : str
         What kind of score is used,
             none: score = $x$
@@ -143,13 +141,13 @@ class ScoreInfer(object):
             sidx = sidx[:k]
             score = score[sidx]
             idx = idx[sidx]
-            
+
             tail_idx = idx % num_tail
-            idx = idx / num_tail
+            idx = floor_divide(idx, num_tail)
             rel_idx = idx % num_rel
-            idx = idx / num_rel
+            idx = floor_divide(idx, num_rel)
             head_idx = idx % num_head
-            
+
             result.append((F.asnumpy(head[head_idx]),
                            F.asnumpy(rel[rel_idx]),
                            F.asnumpy(tail[tail_idx]),
@@ -166,7 +164,7 @@ class ScoreInfer(object):
                 score = score[sidx]
                 idx = idx[sidx]
                 tail_idx = idx % num_tail
-                idx = idx / num_tail
+                idx = floor_divide(idx, num_tail)
                 rel_idx = idx % num_rel
 
                 result.append((np.full((k,), F.asnumpy(head[i])),
@@ -185,7 +183,7 @@ class ScoreInfer(object):
                 score = score[sidx]
                 idx = idx[sidx]
                 tail_idx = idx % num_tail
-                idx = idx / num_tail
+                idx = floor_divide(idx, num_tail)
                 head_idx = idx % num_head
 
                 result.append((F.asnumpy(head[head_idx]),
@@ -204,7 +202,7 @@ class ScoreInfer(object):
                 score = score[sidx]
                 idx = idx[sidx]
                 rel_idx = idx % num_rel
-                idx = idx / num_rel
+                idx = floor_divide(idx, num_rel)
                 head_idx = idx % num_head
                 result.append((F.asnumpy(head[head_idx]),
                                F.asnumpy(rel[rel_idx]),
@@ -217,20 +215,17 @@ class ScoreInfer(object):
 
 class EmbSimInfer():
     """ Calculate simularity of entity/relation embeddings based on pretained KG embeddings
-
     Parameters
     ---------
-    device : int 
+    device : int
         Device to run the inference, -1 for CPU
-
     emb_file : dict
         Containing embedding information
-
     sfunc : str
         What kind of score is used,
             cosine: score = $\frac{x \cdot y}{||x||_2||y||_2}$
-            l2: score = $||x - y||_2$
-            l1: score = $||x - y||_1$
+            l2: score = $-||x - y||_2$
+            l1: score = $-||x - y||_1$
             dot: score = $x \cdot y$
             ext_jaccard: score = $\frac{x \cdot y}{||x||_{2}^{2} + ||y||_{2}^{2} - x \cdot y}$
     """
@@ -252,7 +247,7 @@ class EmbSimInfer():
 
     def load_emb(self):
         self.emb = F.tensor(np.load(self.emb_file))
-            
+
     def topK(self, head=None, tail=None, bcast=False, pair_ws=False, k=10):
         if head is None:
             head = F.arange(0, self.emb.shape[0])
@@ -284,11 +279,7 @@ class EmbSimInfer():
                 score.append(F.copy_to(self.sim_func(sh_emb, st_emb, pw=True), F.cpu()))
             score = F.cat(score, dim=0)
 
-            if self.sfunc == 'cosine' or self.sfunc == 'dot' or self.sfunc == 'ext_jaccard':
-                sidx = F.argsort(score, dim=0, descending=True)
-            else:
-                sidx = F.argsort(score, dim=0, descending=False)
-
+            sidx = F.argsort(score, dim=0, descending=True)
             sidx = sidx[:k]
             score = score[sidx]
             result.append((F.asnumpy(head[sidx]),
@@ -298,7 +289,7 @@ class EmbSimInfer():
             num_head = head.shape[0]
             num_tail = tail.shape[0]
             batch_size = self.batch_size
-            
+
             # chunked cal score
             score = []
             for i in range((num_head + batch_size - 1) // batch_size):
@@ -321,16 +312,13 @@ class EmbSimInfer():
                 idx = F.arange(0, num_head * num_tail)
                 score = F.reshape(score, (num_head * num_tail, ))
 
-                if self.sfunc == 'cosine' or self.sfunc == 'dot' or self.sfunc == 'ext_jaccard':
-                    sidx = F.argsort(score, dim=0, descending=True)
-                else:
-                    sidx = F.argsort(score, dim=0, descending=False)
+                sidx = F.argsort(score, dim=0, descending=True)
                 sidx = sidx[:k]
                 score = score[sidx]
                 sidx = sidx
                 idx = idx[sidx]
                 tail_idx = idx % num_tail
-                idx = idx / num_tail
+                idx = floor_divide(idx, num_tail)
                 head_idx = idx % num_head
 
                 result.append((F.asnumpy(head[head_idx]),
@@ -341,11 +329,8 @@ class EmbSimInfer():
                 result = []
                 for i in range(num_head):
                     i_score = score[i]
-                    if self.sfunc == 'cosine' or self.sfunc == 'dot' or self.sfunc == 'ext_jaccard':
-                        sidx = F.argsort(i_score, dim=0, descending=True)
-                    else:
-                        sidx = F.argsort(i_score, dim=0, descending=False)
 
+                    sidx = F.argsort(i_score, dim=0, descending=True)
                     idx = F.arange(0, num_tail)
                     i_idx = sidx[:k]
                     i_score = i_score[i_idx]
@@ -356,6 +341,4 @@ class EmbSimInfer():
                                   F.asnumpy(i_score)))
 
         return result
-
-
 
